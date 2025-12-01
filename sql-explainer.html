@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Code Explainer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-0.5rem); }
+        }
+        .animate-bounce {
+            animation: bounce 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // Lucide React icons as inline SVG components
+        const Send = ({ className = "w-4 h-4" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+        );
+
+        const Trash2 = ({ className = "w-4 h-4" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+        );
+
+        const Database = ({ className = "w-4 h-4" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <ellipse cx="12" cy="5" rx="9" ry="3" strokeWidth={2} />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+            </svg>
+        );
+
+        const Code = ({ className = "w-4 h-4" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+        );
+
+        const Settings = ({ className = "w-4 h-4" }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <circle cx="12" cy="12" r="3" strokeWidth={2} />
+            </svg>
+        );
+
+        function SQLExplainerBot() {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const [sqlContext, setSqlContext] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [config, setConfig] = useState({
+                endpoint: '',
+                apiKey: '',
+                deploymentName: ''
+            });
+            const [showConfig, setShowConfig] = useState(true);
+            const [showSqlPanel, setShowSqlPanel] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [messages]);
+
+            const systemPrompt = `You are an expert SQL Server database developer and consultant. Your role is to help users understand SQL code, stored procedures, queries, and database concepts.
+
+${sqlContext ? `The user has provided the following SQL code for reference:\n\n${sqlContext}\n\n` : ''}
+
+When explaining code:
+- Break down complex queries step by step
+- Explain what each major section does
+- Identify any potential performance issues
+- Suggest improvements if relevant
+- Use clear, conversational language
+- Point out SQL Server specific features being used
+
+Be helpful, thorough, and educational.`;
+
+            const sendMessage = async () => {
+                if (!input.trim() || isLoading) return;
+                
+                if (!config.endpoint || !config.apiKey || !config.deploymentName) {
+                    alert('Please configure your Azure OpenAI credentials first');
+                    return;
+                }
+
+                const userMessage = { role: 'user', content: input };
+                setMessages(prev => [...prev, userMessage]);
+                setInput('');
+                setIsLoading(true);
+
+                try {
+                    const conversationMessages = messages.map(m => ({
+                        role: m.role,
+                        content: m.content
+                    }));
+
+                    const response = await fetch(
+                        `${config.endpoint}/openai/deployments/${config.deploymentName}/chat/completions?api-version=2024-02-15-preview`,
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'api-key': config.apiKey
+                            },
+                            body: JSON.stringify({
+                                messages: [
+                                    { role: 'system', content: systemPrompt },
+                                    ...conversationMessages,
+                                    userMessage
+                                ],
+                                max_tokens: 2000,
+                                temperature: 0.7
+                            })
+                        }
+                    );
+
+                    if (!response.ok) {
+                        const error = await response.text();
+                        throw new Error(`API Error: ${response.status} - ${error}`);
+                    }
+
+                    const data = await response.json();
+                    const assistantMessage = {
+                        role: 'assistant',
+                        content: data.choices[0].message.content
+                    };
+
+                    setMessages(prev => [...prev, assistantMessage]);
+                } catch (error) {
+                    console.error('Error:', error);
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: `Error: ${error.message}`
+                    }]);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            const clearChat = () => {
+                setMessages([]);
+            };
+
+            const quickQuestions = [
+                "Explain what this stored procedure does",
+                "Are there any performance issues?",
+                "How can I optimize this query?",
+                "What are the input parameters?",
+                "Explain the logic step by step"
+            ];
+
+            if (showConfig) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+                        <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-lg p-8">
+                            <div className="flex items-center gap-3 mb-2">
+                                <Database className="w-8 h-8 text-blue-600" />
+                                <h1 className="text-3xl font-bold text-gray-800">SQL Code Explainer</h1>
+                            </div>
+                            <p className="text-gray-600 mb-6">Paste your SQL code and get expert explanations</p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Azure OpenAI Endpoint
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="https://your-resource.openai.azure.com"
+                                        value={config.endpoint}
+                                        onChange={(e) => setConfig({...config, endpoint: e.target.value})}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        API Key
+                                    </label>
+                                    <input
+                                        type="password"
+                                        placeholder="Your API key"
+                                        value={config.apiKey}
+                                        onChange={(e) => setConfig({...config, apiKey: e.target.value})}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Deployment Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="gpt-4 or gpt-35-turbo"
+                                        value={config.deploymentName}
+                                        onChange={(e) => setConfig({...config, deploymentName: e.target.value})}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                <button
+                                    onClick={() => {
+                                        if (config.endpoint && config.apiKey && config.deploymentName) {
+                                            setShowConfig(false);
+                                        } else {
+                                            alert('Please fill in all fields');
+                                        }
+                                    }}
+                                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                    Start Analyzing SQL
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex h-screen bg-gray-100">
+                    {showSqlPanel && (
+                        <div className="w-96 bg-white border-r border-gray-200 flex flex-col">
+                            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Code className="w-5 h-5 text-blue-600" />
+                                    <h2 className="text-lg font-bold text-gray-800">SQL Code</h2>
+                                </div>
+                                <button
+                                    onClick={() => setShowSqlPanel(false)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            
+                            <div className="flex-1 p-4">
+                                <textarea
+                                    value={sqlContext}
+                                    onChange={(e) => setSqlContext(e.target.value)}
+                                    placeholder="Paste your stored procedure or SQL query here..."
+                                    className="w-full h-full p-3 border border-gray-300 rounded-lg font-mono text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                            </div>
+
+                            <div className="p-4 border-t border-gray-200">
+                                <button
+                                    onClick={() => {
+                                        if (sqlContext.trim()) {
+                                            setShowSqlPanel(false);
+                                            setMessages([{
+                                                role: 'assistant',
+                                                content: "I've loaded your SQL code. What would you like to know about it?"
+                                            }]);
+                                        }
+                                    }}
+                                    className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                                >
+                                    Load SQL Code
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex-1 flex flex-col">
+                        <div className="bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Database className="w-6 h-6 text-blue-600" />
+                                <div>
+                                    <h1 className="text-xl font-bold text-gray-800">SQL Code Explainer</h1>
+                                    {sqlContext && (
+                                        <p className="text-xs text-green-600">✓ SQL code loaded</p>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setShowSqlPanel(true)}
+                                    className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                                >
+                                    <Code className="w-4 h-4" />
+                                    {sqlContext ? 'Edit SQL' : 'Add SQL'}
+                                </button>
+                                <button
+                                    onClick={clearChat}
+                                    className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Clear
+                                </button>
+                                <button
+                                    onClick={() => setShowConfig(true)}
+                                    className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    <Settings className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {messages.length === 0 ? (
+                                <div className="max-w-3xl mx-auto mt-16">
+                                    <div className="text-center text-gray-400 mb-8">
+                                        <Database className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                                        <p className="text-lg font-medium">SQL Code Expert Assistant</p>
+                                        <p className="text-sm mt-2">Paste your SQL code and ask questions about it</p>
+                                    </div>
+
+                                    {!sqlContext && (
+                                        <div className="bg-white rounded-lg p-6 border-2 border-dashed border-gray-300">
+                                            <h3 className="font-semibold text-gray-700 mb-3">Get Started:</h3>
+                                            <ol className="space-y-2 text-sm text-gray-600 list-decimal list-inside">
+                                                <li>Click "Add SQL" button above</li>
+                                                <li>Paste your stored procedure or query</li>
+                                                <li>Ask questions about the code</li>
+                                            </ol>
+                                        </div>
+                                    )}
+
+                                    {sqlContext && (
+                                        <div>
+                                            <h3 className="font-semibold text-gray-700 mb-3">Try asking:</h3>
+                                            <div className="grid grid-cols-1 gap-2">
+                                                {quickQuestions.map((q, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => setInput(q)}
+                                                        className="text-left px-4 py-3 bg-white border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors text-sm text-gray-700"
+                                                    >
+                                                        {q}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                messages.map((msg, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                                    >
+                                        <div
+                                            className={`max-w-3xl px-4 py-3 rounded-lg ${
+                                                msg.role === 'user'
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'bg-white text-gray-800 border border-gray-200'
+                                            }`}
+                                        >
+                                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                            {isLoading && (
+                                <div className="flex justify-start">
+                                    <div className="bg-white border border-gray-200 px-4 py-3 rounded-lg">
+                                        <div className="flex gap-2">
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <div className="bg-white border-t border-gray-200 p-4">
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                                    placeholder="Ask about the SQL code..."
+                                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    disabled={isLoading}
+                                />
+                                <button
+                                    onClick={sendMessage}
+                                    disabled={isLoading || !input.trim()}
+                                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                                >
+                                    <Send className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SQLExplainerBot />);
+    </script>
+</body>
+</html>
